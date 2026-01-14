@@ -35,11 +35,10 @@ public class Constants {
             .mass(8.8);
 
     private static double velocity;
-
     public static Servo myServo;
 
     public static MecanumConstants driveConstants = new MecanumConstants()
-            .maxPower(0.7)
+            .maxPower(0.6)
             .xVelocity(51.3873333)
             .yVelocity(37.1826)
             .rightFrontMotorName("rf")

@@ -24,7 +24,7 @@ public class Shooter_manual extends OpMode {
     static final double kF = 12.0;
 
     // Fixed shooting values
-    static final double SHOOTER_RPM = 3900;
+    static final double SHOOTER_RPM = 3280;
     static final double HOOD_POS    = 0.35;
 
     // Intake
