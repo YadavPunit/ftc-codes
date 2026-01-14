@@ -15,8 +15,8 @@ import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "blue_back_right_align_shoot2", group = "Auto")
-public class Example_auto2 extends LinearOpMode {
+@Autonomous(name = "blue_back_right_align_shoot1", group = "Auto")
+public class auto_blue_long extends LinearOpMode {
 
     // ================= PEDRO =================
     private Follower follower;
@@ -25,11 +25,11 @@ public class Example_auto2 extends LinearOpMode {
 
     // ================= HARDWARE =================
     private DcMotor intake;
-    private DcMotorEx shooting, shooting1;
+    private DcMotorEx shooterL, shooterR;
     private Servo hood, leftRamp, rightRamp;
     private Limelight3A limelight;
 
-    // ================= CONSTANTS (FROM test6) =================
+    // ================= CONSTANTS (FROM TELEOP test14) =================
     static final double TICKS_PER_REV = 28.0;
 
     static final double SHOOTER_kP = 60.0;
@@ -37,16 +37,16 @@ public class Example_auto2 extends LinearOpMode {
     static final double SHOOTER_kD = 6.0;
     static final double SHOOTER_kF = 12.0;
 
-    static final double ALIGN_KP = 0.03;
-    static final double ALIGN_KD = 0.001;
-    static final double TY_OFFSET = 8;
+    static final double LONG_RPM  = 3790;
+    static final double LONG_HOOD = 0.28;
 
-    static final double RAMP_MIN = 0.35;
-    static final double RAMP_MAX = 0.70;
-    static final double HOOD_MIN = 0.30;
-    static final double HOOD_MAX = 1.00;
+    static final double RAMP_OPEN_LEFT = 0.3;
+    static final double RAMP_CLOSE_LEFT = 0.6;
 
-    static final double INTAKE_SHOOT = -0.8;
+    static final double INTAKE_FEED = -0.5;
+
+    static final double HOOD_MIN = 0.2;
+    static final double HOOD_MAX = 0.8;
 
     // ================= INIT =================
     @Override
@@ -57,31 +57,34 @@ public class Example_auto2 extends LinearOpMode {
                 new Pose(65.7196, 7.4018, Math.toRadians(90))
         );
 
-        intake    = hardwareMap.get(DcMotor.class, "intake");
-        shooting  = hardwareMap.get(DcMotorEx.class, "left_shooting");
-        shooting1 = hardwareMap.get(DcMotorEx.class, "right_shooting");
+        intake   = hardwareMap.get(DcMotor.class, "intake");
+        shooterL = hardwareMap.get(DcMotorEx.class, "left_shooting");
+        shooterR = hardwareMap.get(DcMotorEx.class, "right_shooting");
+
+        shooterR.setDirection(DcMotor.Direction.REVERSE);
+
+        shooterL.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        shooterR.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        shooterL.setVelocityPIDFCoefficients(
+                SHOOTER_kP, SHOOTER_kI, SHOOTER_kD, SHOOTER_kF
+        );
+        shooterR.setVelocityPIDFCoefficients(
+                SHOOTER_kP, SHOOTER_kI, SHOOTER_kD, SHOOTER_kF
+        );
+
+        hood = hardwareMap.get(Servo.class, "hood");
+        hood.scaleRange(HOOD_MIN, HOOD_MAX);
+        hood.setPosition(0.5);
 
         leftRamp  = hardwareMap.get(Servo.class, "left_ramp");
         rightRamp = hardwareMap.get(Servo.class, "right_ramp");
-        hood      = hardwareMap.get(Servo.class, "hood");
-
-        shooting1.setDirection(DcMotor.Direction.REVERSE);
-
-        shooting.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        shooting1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-
-        shooting.setVelocityPIDFCoefficients(
-                SHOOTER_kP, SHOOTER_kI, SHOOTER_kD, SHOOTER_kF
-        );
-        shooting1.setVelocityPIDFCoefficients(
-                SHOOTER_kP, SHOOTER_kI, SHOOTER_kD, SHOOTER_kF
-        );
 
         limelight = hardwareMap.get(Limelight3A.class, "limelight");
         limelight.setPollRateHz(100);
 
-        setRampPosition(0.37);
-        setHoodPosition(0.50);
+        setRamp(RAMP_CLOSE_LEFT);
+        setHood(0.5);
 
         paths = new Paths(follower);
         opmodeTimer = new Timer();
@@ -95,15 +98,11 @@ public class Example_auto2 extends LinearOpMode {
         limelight.start();
         sleep(600);
 
-        // ================= ALIGN & SHOOT =================
-
-
         // ================= FOLLOW PATH =================
         runPath(paths.Path1);
 
-        setRampPosition(0.37);
-
-        sleep(1000);
+        setRamp(RAMP_CLOSE_LEFT);
+        sleep(800);
 
         alignAndShoot(1500);
 
@@ -111,7 +110,7 @@ public class Example_auto2 extends LinearOpMode {
         telemetry.update();
     }
 
-    // ================= ALIGN & SHOOT FUNCTION =================
+    // ================= ALIGN & SHOOT =================
     private void alignAndShoot(long shootTimeMs) {
 
         double lastError = 0;
@@ -124,38 +123,38 @@ public class Example_auto2 extends LinearOpMode {
 
             LLResult ll = limelight.getLatestResult();
             if (ll == null || !ll.isValid()) {
-                intake.setPower(0);
+                setIntake(0);
                 continue;
             }
 
-            // ---------- BOT ALIGN (TY PID) ----------
-            double error = -(ll.getTy() + TY_OFFSET);
+            // ----- BOT ALIGN (TY PD) -----
+            double error = -(ll.getTy() + 8);
             double derivative = error - lastError;
             lastError = error;
 
             double turn =
-                    (ALIGN_KP * error) + (ALIGN_KD * derivative);
+                    (0.03 * error) + (0.001 * derivative);
 
             follower.setTeleOpDrive(0, 0, turn, true);
 
-            // ---------- SHOOTER RPM + HOOD (TX MAP) ----------
-            updateShooterAndHood(ll.getTx());
+            // ----- TELEOP VALUES -----
+            setShooterRPM(LONG_RPM);
+            setHood(LONG_HOOD);
 
-            // ---------- FEED ----------
-            sleep(1500);
-            intake.setPower(INTAKE_SHOOT);
-            setRampPosition(0.65);
+            // ----- FEED -----
+            sleep(1200);
+            setRamp(RAMP_OPEN_LEFT);
+            setIntake(INTAKE_FEED);
 
             telemetry.addData("Align Error", error);
             telemetry.update();
         }
 
-        // ---------- STOP ----------
+        // ----- STOP -----
         follower.setTeleOpDrive(0, 0, 0, true);
-        shooting.setPower(0);
-        shooting1.setPower(0);
-        intake.setPower(0);
-        setRampPosition(0.37);
+        setShooterRPM(0);
+        setIntake(0);
+        setRamp(RAMP_CLOSE_LEFT);
     }
 
     // ================= PATH RUNNER =================
@@ -165,45 +164,33 @@ public class Example_auto2 extends LinearOpMode {
             follower.update();
             telemetry.addData("x", follower.getPose().getX());
             telemetry.addData("y", follower.getPose().getY());
-            telemetry.addData("heading",
-                    Math.toDegrees(follower.getPose().getHeading()));
+            telemetry.addData(
+                    "heading",
+                    Math.toDegrees(follower.getPose().getHeading())
+            );
             telemetry.update();
         }
     }
 
-    // ================= HELPERS (FROM test6) =================
-    private double map(double x, double inMin, double inMax,
-                       double outMin, double outMax) {
-        return (x - inMin) * (outMax - outMin)
-                / (inMax - inMin) + outMin;
+    // ================= VALUE-BASED HELPERS =================
+    private void setShooterRPM(double rpm) {
+        double ticks = (rpm / 60.0) * TICKS_PER_REV;
+        shooterL.setVelocity(ticks);
+        shooterR.setVelocity(ticks);
     }
 
-    private double rpmToTicks(double rpm) {
-        return (rpm / 60.0) * TICKS_PER_REV;
-    }
-
-    private void setRampPosition(double pos) {
-        pos = Math.max(RAMP_MIN, Math.min(RAMP_MAX, pos));
-        leftRamp.setPosition(pos);
-        rightRamp.setPosition(1.0 - pos);
-    }
-
-    private void setHoodPosition(double pos) {
+    private void setHood(double pos) {
         pos = Math.max(HOOD_MIN, Math.min(HOOD_MAX, pos));
         hood.setPosition(pos);
     }
 
-    // ================= LIMELIGHT TX MAPPING =================
-    private void updateShooterAndHood(double tx) {
+    private void setRamp(double leftPos) {
+        leftRamp.setPosition(leftPos);
+        rightRamp.setPosition(1.0 - leftPos);
+    }
 
-        tx = Math.max(-4.97, Math.min(14.0, tx));
-
-        double rpm = map(tx, -4.97, 14.0, 3100, 4050);
-        double hoodPos = map(tx, -4.97, 14.0, 0.95, 0.45);
-
-        shooting.setVelocity(rpmToTicks(rpm));
-        shooting1.setVelocity(rpmToTicks(rpm));
-        setHoodPosition(hoodPos);
+    private void setIntake(double power) {
+        intake.setPower(power);
     }
 
     // ================= PATH DEFINITIONS =================
