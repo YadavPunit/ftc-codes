@@ -1,11 +1,12 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.Servo;
-
+@Configurable
 @TeleOp(name = "Shooter_Manual")
 public class Shooter_manual extends OpMode {
 
@@ -18,21 +19,21 @@ public class Shooter_manual extends OpMode {
     static final double TICKS_PER_REV = 28.0; // REV HD Hex
 
     // Shooter PIDF
-    static final double kP = 60.0;
-    static final double kI = 0.0;
-    static final double kD = 6.0;
-    static final double kF = 12.0;
+    public static double  kP = 72.5;
+    public static double  kI = 0.0;
+    public static double  kD = 6.0;
+    public static double  kF = 16.2;
 
     // Fixed shooting values
-    static final double SHOOTER_RPM = 3280;
-    static final double HOOD_POS    = 0.35;
+    public static double SHOOTER_RPM = 3600;
+    public static double HOOD_POS    = 0.27;
 
     // Intake
-    static final double INTAKE_POWER = -0.59;
+    static final double INTAKE_POWER = -0.7;
 
     // Ramp positions
-    static final double RAMP_UP   = 0.65;
-    static final double RAMP_DOWN = 0.37;
+    static final double RAMP_UP   = 0.57;
+    static final double RAMP_DOWN = 0.3;
 
     // ================= STATE =================
     private boolean shooterOn = false;

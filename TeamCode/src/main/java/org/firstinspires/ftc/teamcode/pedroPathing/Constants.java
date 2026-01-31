@@ -22,25 +22,22 @@ public class Constants {
     public static FollowerConstants followerConstants = new FollowerConstants()
 
             .useSecondaryHeadingPIDF(true)
-
-
-
-            .forwardZeroPowerAcceleration(64.811)
-            .lateralZeroPowerAcceleration(89.396)
-            .translationalPIDFCoefficients(new PIDFCoefficients(0.085,0,0.011,0.048))
+            .forwardZeroPowerAcceleration(41.86118)
+            .lateralZeroPowerAcceleration(69.1337)
+            .translationalPIDFCoefficients(new PIDFCoefficients(0.074,0.00001,0.0074,0.048))
             .headingPIDFCoefficients(new PIDFCoefficients(1,0,0.07,0.02))
-            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.05,0,0.001,0.6,0.05))
+            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.045,0,0.005,0.6,0.055))
             .secondaryHeadingPIDFCoefficients(new PIDFCoefficients(2,0,0.08,0.01))
-            .centripetalScaling(0.00095)
-            .mass(8.8);
+            .centripetalScaling(0.00059)
+            .mass(11.9);
 
     private static double velocity;
     public static Servo myServo;
 
     public static MecanumConstants driveConstants = new MecanumConstants()
-            .maxPower(0.6)
-            .xVelocity(51.3873333)
-            .yVelocity(37.1826)
+            .maxPower(0.75)
+            .xVelocity(46.5186)
+            .yVelocity(34.6596)
             .rightFrontMotorName("rf")
             .rightRearMotorName("rr")
             .leftRearMotorName("lr")

@@ -214,7 +214,6 @@ public class test6 extends OpMode {
 
         double targetRPM = map(tx, -4.97, 14.0, 3100, 4050);
         double hoodPos   = map(tx, -4.97, 14.0, 0.95, 0.45);
-        double rampPos   = map(tx, -4.97, 14.0, 0.65, 0.45);
 
         double smoothRPM = rampRPM(targetRPM);
 
@@ -222,6 +221,5 @@ public class test6 extends OpMode {
         shooting1.setVelocity(rpmToTicks(smoothRPM));
 
         setHoodPosition(hoodPos);
-        setRampPosition(rampPos);
     }
 }

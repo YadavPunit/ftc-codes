@@ -18,8 +18,8 @@ import com.qualcomm.robotcore.hardware.Servo;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 @Configurable
-@TeleOp(name = "test18_with_preset_STABLE_FINAL")
-public class test18_with_preset_FINAL extends OpMode {
+@TeleOp(name = "test23_turet_logic")
+public class test23_turet_logic extends OpMode {
 
     // ================= CORE =================
     private Follower follower;
@@ -38,29 +38,44 @@ public class test18_with_preset_FINAL extends OpMode {
     static final double SLOW_MODE = 0.5;
     static final double INTAKE_POWER = -0.8;
     static final double PRESET_INTAKE_POWER = -0.75;
-    static final double RAMP_MIN_RPM = 2500;
+    static final double RAMP_MIN_RPM = 2000;
     static final long FEED_TIME_MS = 1500;
-    static final long POSE_WAIT_MS = 1000;
+    static final long POSE_WAIT_MS = 400;
+
+    // ===== Shooter PIDF =====
+    public static double SHOOTER_kP = 85;
+    public static double SHOOTER_kI = 0.0;
+    public static double SHOOTER_kD = 12;
+    public static double SHOOTER_kF = 18;
 
     // ===== Turret constants =====
-    static final double TURRET_kP = 0.02;
-    static final double TURRET_kD = 0.001;
+    static final double TURRET_RECENTER_POWER = 0.45;
+    static final int TURRET_CENTER_TICKS = 0;
+
+    static final double TURRET_kP = 0.025;
+    static final double TURRET_kD = 0.0035;
     static final double TURRET_DEADBAND = 0.15;
-    static final double TURRET_MAX_POWER = 0.35;
+    static final double TURRET_MAX_POWER = 0.65;
     static final double TURRET_SLEW = 0.04;
+    static final double TURRET_MANUAL_POWER = 0.65;
+    static final double TURRET_ALIGN_DAMP = 0.6;
 
-    static final int TURRET_MIN_TICKS = -400; // -85 deg
-    static final int TURRET_MAX_TICKS = 400;  // +85 deg
-    static final int TURRET_STEP_TICKS = 17;  // ~5 deg
+    static final double TURRET_TURN_COMP = 1.07; // 🔧 tune 0.7–1.2
 
-    // ================= TURRT STATE =================
+    static final int TURRET_MIN_TICKS = -500;
+    static final int TURRET_MAX_TICKS = 500;
+
+    static final double TURN_SCALE = 0.6;
+
+    // ================= TURRET STATE =================
     private double lastTurretError = 0;
     private double lastTurretPower = 0;
+    private double lastTurnInput = 0;
 
     // ===== Path speeds =====
-    static final double SPEED_SHOOT = 0.5;
-    static final double SPEED_CLASSIFIER_APPROACH = 0.45;
-    static final double SPEED_CLASSIFIER_OPEN = 0.35;
+    static final double SPEED_SHOOT = 0.9;
+    static final double SPEED_CLASSIFIER_APPROACH = 0.9;
+    static final double SPEED_CLASSIFIER_OPEN = 0.6;
 
     // ===== Ramp =====
     static final double RAMP_UP_LEFT = 0.55;
@@ -75,7 +90,7 @@ public class test18_with_preset_FINAL extends OpMode {
     static final double LIFT_DOWN_RIGHT = 0.8;
 
     // ===== Shooter =====
-    static final double SHORT_RPM = 3040;
+    static final double SHORT_RPM = 3000;
     static final double SHORT_HOOD = 0.34;
     static final double LONG_RPM = 4090;
     static final double LONG_HOOD = 0.28;
@@ -119,6 +134,9 @@ public class test18_with_preset_FINAL extends OpMode {
         shooterL = hardwareMap.get(DcMotorEx.class, "left_shooting");
         shooterR = hardwareMap.get(DcMotorEx.class, "right_shooting");
         shooterR.setDirection(DcMotor.Direction.REVERSE);
+
+        shooterL.setVelocityPIDFCoefficients(SHOOTER_kP, SHOOTER_kI, SHOOTER_kD, SHOOTER_kF);
+        shooterR.setVelocityPIDFCoefficients(SHOOTER_kP, SHOOTER_kI, SHOOTER_kD, SHOOTER_kF);
 
         turret = hardwareMap.get(DcMotorEx.class, "turret");
         turret.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
@@ -166,7 +184,6 @@ public class test18_with_preset_FINAL extends OpMode {
                 )
                 .build();
 
-
         setRamp(false);
         setLift(false);
     }
@@ -183,72 +200,117 @@ public class test18_with_preset_FINAL extends OpMode {
         follower.update();
         telemetryM.update();
 
-        // ===== TURRET AUTO ALIGN (GP2 LB) =====
-        alignTurret(gamepad2.left_bumper);
+        // ===== DRIVE =====
+        double speedMul = gamepad1.right_bumper ? SLOW_MODE : 0.5;
+        lastTurnInput = -gamepad1.right_stick_x * TURN_SCALE * speedMul;
+        if (Math.abs(lastTurnInput) < 0.02) lastTurnInput = 0;
 
-        // ===== TURRET STEP (GP2 DPAD) =====
-        if (!gamepad2.left_bumper) {
-            if (gamepad2.dpad_left) stepTurret(-TURRET_STEP_TICKS);
-            else if (gamepad2.dpad_right) stepTurret(TURRET_STEP_TICKS);
-        }
-
-        // ===== PRESETS (GP1) =====
-        if (gamepad1.triangle) startPreset(PresetType.CLOSE);
-        else if (gamepad1.cross) startPreset(PresetType.LONG);
-        else if (gamepad1.square) startPreset(PresetType.CLASSIFIER);
-        else if (gamepad1.circle) stopPreset();
-
-        if (automatedDrive) {
-            runPreset();
-            return;
-        }
-
-        // ================= MANUAL TELEOP =================
-        double speedMul = gamepad1.right_bumper ? SLOW_MODE : 1.0;
         follower.setTeleOpDrive(
                 -gamepad1.left_stick_y * speedMul,
                 -gamepad1.left_stick_x * speedMul,
-                -gamepad1.right_stick_x * speedMul,
+                lastTurnInput,
                 true
         );
 
-        // LIFT
+        // ===== TURRET AUTO + COMPENSATION =====
+        alignTurret(gamepad2.left_bumper);
+
+        // ===== TURRET MANUAL =====
+        if (!gamepad2.left_bumper) {
+            double manualPower = 0;
+            if (gamepad2.dpad_left) manualPower = -TURRET_MANUAL_POWER;
+            else if (gamepad2.dpad_right) manualPower = TURRET_MANUAL_POWER;
+
+            int pos = turret.getCurrentPosition();
+            if ((manualPower > 0 && pos < TURRET_MAX_TICKS) ||
+                    (manualPower < 0 && pos > TURRET_MIN_TICKS)) {
+                turret.setPower(manualPower);
+            }
+        }
+
+        // ===== LIFT =====
         if (gamepad1.dpad_up) setLift(true);
         else if (gamepad1.dpad_down) setLift(false);
 
-        // INTAKE
-        double intakePower = 0.0;
+        // ===== INTAKE =====
+        double intakePower = 0;
         boolean triggerActive = false;
 
         if (gamepad1.left_trigger > 0.05) {
             intakePower = -0.8 * gamepad1.left_trigger;
             triggerActive = true;
         } else if (gamepad1.right_trigger > 0.05) {
-            intakePower = 1.0 * gamepad1.right_trigger;
+            intakePower = gamepad1.right_trigger;
             triggerActive = true;
         }
 
-        if (triggerActive) {
-            intake.setPower(intakePower);
-        } else {
+        if (triggerActive) intake.setPower(intakePower);
+        else {
             if (gamepad2.cross && !prevX) intakeToggle = !intakeToggle;
             prevX = gamepad2.cross;
             intake.setPower(intakeToggle ? INTAKE_POWER : 0);
         }
 
-        // SHOOTER
-        if (gamepad2.triangle) {
-            runShooterRPM(SHORT_RPM);
-            hood.setPosition(SHORT_HOOD);
-        } else if (gamepad2.circle) {
-            runShooterRPM(LONG_RPM);
-            hood.setPosition(LONG_HOOD);
-        } else if (gamepad2.square) {
-            shooterL.setVelocity(0);
-            shooterR.setVelocity(0);
+        // ===== SHOOTER =====
+        if (gamepad2.left_bumper) {
+
+            LLResult ll = limelight.getLatestResult();
+            if (ll != null && ll.isValid()) {
+
+                double tx = ll.getTx();
+                double mappedRPM;
+                double mappedHood;
+
+                if (tx >= 15.77) {
+                    mappedRPM = 3600;
+                    mappedHood = 0.25;
+                } else if (tx >= 14.18) {
+                    mappedRPM = map(tx, 14.18, 15.77, 3350, 3600);
+                    mappedHood = map(tx, 14.18, 15.77, 0.28, 0.25);
+                } else if (tx >= 13.18) {
+                    mappedRPM = map(tx, 13.18, 14.18, 3200, 3350);
+                    mappedHood = map(tx, 13.18, 14.18, 0.39, 0.28);
+                } else if (tx >= 11.92) {
+                    mappedRPM = map(tx, 11.92, 13.18, 3050, 3200);
+                    mappedHood = map(tx, 11.92, 13.18, 0.41, 0.39);
+                } else if (tx >= 9.96) {
+                    mappedRPM = map(tx, 9.96, 11.92, 2900, 3050);
+                    mappedHood = map(tx, 9.96, 11.92, 0.45, 0.41);
+                } else if (tx >= 8.08) {
+                    mappedRPM = map(tx, 8.08, 9.96, 2800, 2900);
+                    mappedHood = map(tx, 8.08, 9.96, 0.49, 0.45);
+                } else if (tx >= 6.42) {
+                    mappedRPM = map(tx, 6.42, 8.08, 2660, 2800);
+                    mappedHood = map(tx, 6.42, 8.08, 0.52, 0.49);
+                } else if (tx >= 3.50) {
+                    mappedRPM = map(tx, 3.50, 6.42, 2600, 2660);
+                    mappedHood = map(tx, 3.50, 6.42, 0.60, 0.52);
+                } else if (tx >= 1.14) {
+                    mappedRPM = map(tx, 1.14, 3.50, 2540, 2600);
+                    mappedHood = map(tx, 1.14, 3.50, 0.75, 0.60);
+                } else {
+                    mappedRPM = 2470;
+                    mappedHood = 0.89;
+                }
+
+                runShooterRPM(mappedRPM);
+                hood.setPosition(mappedHood);
+            }
+
+        } else {
+            if (gamepad2.triangle) {
+                runShooterRPM(SHORT_RPM);
+                hood.setPosition(SHORT_HOOD);
+            } else if (gamepad2.circle) {
+                runShooterRPM(LONG_RPM);
+                hood.setPosition(LONG_HOOD);
+            } else if (gamepad2.square) {
+                shooterL.setVelocity(0);
+                shooterR.setVelocity(0);
+            }
         }
 
-        // RAMP SAFETY
+        // ===== RAMP SAFETY =====
         double rpm = Math.abs(shooterL.getVelocity()) / TICKS_PER_REV * 60.0;
         if (rpm < RAMP_MIN_RPM) {
             setRamp(false);
@@ -258,29 +320,31 @@ public class test18_with_preset_FINAL extends OpMode {
         }
     }
 
-    // ================= TURRET LOGIC =================
+    // ================= TURRET AUTO + TURN COMP =================
     private void alignTurret(boolean enable) {
 
+        double power = 0;
+
         LLResult ll = limelight.getLatestResult();
-        if (!enable || ll == null || !ll.isValid()) {
-            turret.setPower(0);
-            lastTurretPower = 0;
-            lastTurretError = 0;
-            return;
+        boolean hasTarget = ll != null && ll.isValid();
+
+        // ----- AUTO ALIGN -----
+        if (enable && hasTarget) {
+            double error = ll.getTy();
+
+            if (Math.abs(error) > TURRET_DEADBAND) {
+                double derivative = error - lastTurretError;
+                lastTurretError = error;
+                power += (TURRET_kP * error) + (TURRET_kD * derivative);
+            } else {
+                lastTurretError = 0;
+            }
         }
 
-        double error = ll.getTy();
+        // ----- TURN COMPENSATION (ALWAYS) -----
+        power += lastTurnInput * TURRET_TURN_COMP;
 
-        if (Math.abs(error) < TURRET_DEADBAND) {
-            turret.setPower(0);
-            lastTurretPower = 0;
-            return;
-        }
-
-        double derivative = error - lastTurretError;
-        lastTurretError = error;
-
-        double power = (TURRET_kP * error) + (TURRET_kD * derivative);
+        power *= TURRET_ALIGN_DAMP;
         power = clamp(power, -TURRET_MAX_POWER, TURRET_MAX_POWER);
 
         double delta = clamp(power - lastTurretPower, -TURRET_SLEW, TURRET_SLEW);
@@ -288,21 +352,21 @@ public class test18_with_preset_FINAL extends OpMode {
         lastTurretPower = power;
 
         int pos = turret.getCurrentPosition();
-        if ((power > 0 && pos >= TURRET_MAX_TICKS) ||
-                (power < 0 && pos <= TURRET_MIN_TICKS)) {
-            turret.setPower(0);
-            return;
+
+// ===== LIMIT WRAP / RECENTER LOGIC =====
+        if (pos >= TURRET_MAX_TICKS && power > 0) {
+            // At right limit → force move left
+            power = -TURRET_RECENTER_POWER;
+            lastTurretPower = power;
+        }
+        else if (pos <= TURRET_MIN_TICKS && power < 0) {
+            // At left limit → force move right
+            power = TURRET_RECENTER_POWER;
+            lastTurretPower = power;
         }
 
-        turret.setPower(power);
-    }
 
-    private void stepTurret(int ticks) {
-        int target = clamp(turret.getCurrentPosition() + ticks, TURRET_MIN_TICKS, TURRET_MAX_TICKS);
-        turret.setTargetPosition(target);
-        turret.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        turret.setPower(0.3);
-        turret.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        turret.setPower(power);
     }
 
     // ================= PRESET LOGIC =================
@@ -333,7 +397,7 @@ public class test18_with_preset_FINAL extends OpMode {
         activePreset = PresetType.NONE;
         automatedDrive = false;
         follower.startTeleopDrive();
-        follower.setMaxPower(1.0);
+        follower.setMaxPower(1);
         shooterL.setVelocity(0);
         shooterR.setVelocity(0);
         intake.setPower(0);
@@ -405,11 +469,11 @@ public class test18_with_preset_FINAL extends OpMode {
         rightLift.setPosition(up ? LIFT_UP_RIGHT : LIFT_DOWN_RIGHT);
     }
 
-    private int clamp(int v, int min, int max) {
+    private double clamp(double v, double min, double max) {
         return Math.max(min, Math.min(max, v));
     }
 
-    private double clamp(double v, double min, double max) {
-        return Math.max(min, Math.min(max, v));
+    private double map(double x, double inMin, double inMax, double outMin, double outMax) {
+        return outMin + (x - inMin) * (outMax - outMin) / (inMax - inMin);
     }
 }
