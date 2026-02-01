@@ -217,7 +217,7 @@ public class test19_with_preset_FINAL extends OpMode {
         }
 
         // ===== DRIVE =====
-        double speedMul = gamepad1.right_bumper ? SLOW_MODE : 1.0;
+        double speedMul = gamepad1.right_bumper ? SLOW_MODE : 0.5;
         follower.setTeleOpDrive(
                 -gamepad1.left_stick_y * speedMul,
                 -gamepad1.left_stick_x * speedMul,
